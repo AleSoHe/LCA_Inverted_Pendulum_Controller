@@ -4,5 +4,5 @@ int lastA;
 int ky_pos;
 
 int get_ky_position(void);
-    
+void init_ky(void);
     
