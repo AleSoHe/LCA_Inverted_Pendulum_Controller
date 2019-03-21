@@ -8,14 +8,14 @@ int lastA;
 int pos = 0;
 
 void init_ky(){
-    lastA = Pin_A_Read();  
+    lastA = Pin_ky_A_Read();  
 }
 
 // Functions
 int get_ky_position(void)
 {   
-    A = Pin_A_Read();
-    B = Pin_B_Read();
+    A = Pin_ky_A_Read();
+    B = Pin_ky_B_Read();
     
     if(lastA != A){
         if(A != B){
