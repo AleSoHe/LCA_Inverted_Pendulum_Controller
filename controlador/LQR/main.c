@@ -54,9 +54,10 @@ enum  DebounceState {WAIT, RUN, PRESS};
 /* PID algorithm global variables */
 #define KPpos -0.05       // Proportional default constant
 
-#define KP -0.21    //-0.6        // Proportional default constant
-#define KI -0.158   //-0.158      // Integral default constant @ 5ms
-#define KD -0.0056    // Derivative constant
+#define K_ang 		-0.21    //-0.6        // Proportional default constant
+#define K_vel_ang 	-0.158   //-0.158      // Integral default constant @ 5ms
+#define K_accel_ang 	-0.0056    // Derivative constant
+
 #define Ts 0.005
 float KIT = Ts*KI;
 float KDT = KD/Ts;
@@ -81,15 +82,18 @@ CY_ISR_PROTO(isr_Timer_Handler);
 CY_ISR(isr_Timer_Handler){
     //Ex_time_Write(1);
     /* ISR PI algoritm local variables */
-    float yk = 0; 	 // speed feedback
+    float u = 0;			 // Input
+    float angle = 0; 	     // Angle
+	float vel_angle = 0;     // Angle velocity
+	float accel_angle = 0; 	 // Angle acceleration
+	float l_angle = 0; 	   	 // Last angle
+	float l_vel_angle = 0;   // Last angle velocity
+	float l_accel_angle = 0; // Last angle acceleration
+	
     float med = 0;  // medición de sensor de ángulo
-    float ek = 0;   // speed error
-    float epk = 0;   // position error
-    float lek = 0;   //last error*/ //For D control
-    float mk = 0;   // total control action
-    float lmk = 0;  //
-    int16 data = 0; // For ADC reading    
+	int16 data = 0; // For ADC reading    
     int Position = 0;
+
     
     #if (PWM_Resolution)    
         int16 pwm = 0;  // For PWM output
@@ -123,12 +127,16 @@ CY_ISR(isr_Timer_Handler){
         if(yk>180){
             yk = yk - 360;
         }
-        yk = -yk;
+        yk = -yk; 
         
-        AngleSend = yk;
+        l_angle = angle;
+        l_vel_angle = vel_angle;
         
-        lek = ek;
-        ek = REFERENCE - yk; // Follow the reference
+        angle = yk;
+        vel_angle = (angle - l_angle)/Ts;
+        accel_angle = (vel_angle - l_vel_angle)/Ts;
+
+        u = REFERENCE - angle*K_ang - vel_angle*K_vel_ang - accel_angle*K_accel_ang; // Follow the reference
         
         /* PI control algorithm calculation */        
 
