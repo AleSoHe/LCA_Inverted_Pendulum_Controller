@@ -99,9 +99,9 @@ CY_ISR(isr_Timer_Handler){
         int16 pwm = 0;  // For PWM output
     #endif
 
-    /*                                                         */
-    /* Performs the PID algorithm every 5ms when in idle state */
-    /*                                                         */
+    /*                                      */
+    /* Performs the state feedback control	*/
+    /*                                      */
 
     if ( (--factor <= 0) && (idle == true)) {
         factor = TS_FACTOR;
