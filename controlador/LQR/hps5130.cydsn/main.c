@@ -29,15 +29,14 @@
 
 /* Global constants */
 #define PWM_MAX         499   // PWM 100% (499) with Tpwm = 500us @ 1MHz (500 counts)
-#define PWM_FACTOR      300   // 100 counts/volt with Tpwm = 500us @ 1MHz
+#define PWM_FACTOR      200   // 100 counts/volt with Tpwm = 500us @ 1MHz
 #define VDAC_FACTOR     62.5  // 1bit/0.016mV
 #define VDAC_MAX        300   // 4.8V max. with DVDAC 9 bits and PGA x2
 #define POT_CONST       3100  // Max. counts to 100%
 
 /* PI algorithm constants */
-#define REFERENCE      -0.25 //-0.15    // Angle reference
-#define PosREFERENCE    0   //-0.15    // Position reference
-#define MAXINTEGRAL    4.7  // Limits the integral part to 4.7V
+#define REFERENCE      0 //-0.15    // Angle reference
+#define PosREFERENCE   0   //-0.15    // Position reference
 #define TS_FACTOR      1    // 5ms counts for Ts = 5ms
 #define N              0.3    // Filter
 /* isr global variables */
@@ -52,20 +51,25 @@ bool save = false; // flag to preserve PI constants adjustment
 enum  DebounceState {WAIT, RUN, PRESS};
 
 /* PID algorithm global variables */
-#define KPpos -0.05       // Proportional default constant
+#define KPpos -0.005       // Proportional default constant
 
-#define K_ang 		-0.21    //-0.6        // Proportional default constant
-#define K_vel_ang 	-0.158   //-0.158      // Integral default constant @ 5ms
-#define K_accel_ang 	-0.0056    // Derivative constant
+#define K_ang 		-13.9828    // -0.21       
+#define K_vel_ang 	-4.5569     // -0.0158      
+#define K_accel_ang -0.8372	    // -0.0056       
 
 #define Ts 0.005
-float KIT = Ts*KI;
-float KDT = KD/Ts;
-volatile float ik = 0; // Integral action and memory
-volatile float dk = 0; // Derivative action and memory
 
 int PositionSend;
 float AngleSend;
+
+// Control parameters
+float u = 0;			 // Input
+float angle = 0; 	     // Angle
+float vel_angle = 0;     // Angle velocity
+float accel_angle = 0; 	 // Angle acceleration
+float l_angle = 0; 	   	 // Last angle
+float l_vel_angle = 0;   // Last angle velocity
+float yk;
 
 void Send(float Ang, int Pos) //uint16 Pwm, uint16 Pos,
 {                   
@@ -82,19 +86,12 @@ CY_ISR_PROTO(isr_Timer_Handler);
 CY_ISR(isr_Timer_Handler){
     //Ex_time_Write(1);
     /* ISR PI algoritm local variables */
-    float u = 0;			 // Input
-    float angle = 0; 	     // Angle
-	float vel_angle = 0;     // Angle velocity
-	float accel_angle = 0; 	 // Angle acceleration
-	float l_angle = 0; 	   	 // Last angle
-	float l_vel_angle = 0;   // Last angle velocity
-	float l_accel_angle = 0; // Last angle acceleration
+
 	
     float med = 0;  // medición de sensor de ángulo
 	int16 data = 0; // For ADC reading    
     int Position = 0;
 
-    
     #if (PWM_Resolution)    
         int16 pwm = 0;  // For PWM output
     #endif
@@ -116,9 +113,6 @@ CY_ISR(isr_Timer_Handler){
         }
         PositionSend = Position;
         
-        //Position error 
-        epk = PosREFERENCE - Position;
-        
         // Medición de sensor de ángulo
         med = ADC_CountsTo_Volts((int32) data);
         
@@ -129,39 +123,39 @@ CY_ISR(isr_Timer_Handler){
         }
         yk = -yk; 
         
+        // Moving Average
+        int i;
+        int mov_av_N = 4;
+        for (i=0; i<mov_av_N-1; i=i+1){
+            angles[i] = angles[i+1];
+        }
+        angles[mov_av_N-1] = yk;
+        
+        // Filtered yk
+        yk = 0;
+        for (i=0; i<mov_av_N; i=i+1){
+            yk = yk + angles[i];
+        }
+        yk = yk/mov_av_N;
+        
         l_angle = angle;
         l_vel_angle = vel_angle;
         
         angle = yk;
-        vel_angle = (angle - l_angle)/Ts;
-        accel_angle = (vel_angle - l_vel_angle)/Ts;
+        vel_angle = (angle - l_angle);
+        accel_angle = (vel_angle - l_vel_angle);
 
+        // Control action
         u = REFERENCE - angle*K_ang - vel_angle*K_vel_ang - accel_angle*K_accel_ang; // Follow the reference
-        
-        /* PI control algorithm calculation */        
-
-        /* Integral part, the rightmost term is also ik_1 */
-        ik = KIT*lek + ik;
-
-        /*Derivate calcutation*/
-        
-        dk=KDT*N*(ek-lek)-lmk*(N*Ts-1);
-        
-        //dk=KDT*(ek-lek);
-
-        /* Total PI control action */ 
-        //mk = KP*ek + ik;
-
-        /* Total PID control action */
-        mk = KPpos*epk; //mk = KP*ek + ik + dk + KPpos*epk; //
         
         /* PWM conditional use */
         #if defined CY_PWM_PWM_H
             /* Scales mk to PWM range */
-            pwm = 220 + (int16) (fabs(mk)*PWM_FACTOR); //255+
-
+            pwm = 200 + (int16) (fabs(u)*PWM_FACTOR); //255+
+            AngleSend = vel_angle;
+            
             /* Establish motor direction*/
-            if(mk > 0){
+            if(u > 0){
                 Pin_A_Write(0);
                 Pin_B_Write(1);
                 //Control_Reg_Write(1);
@@ -176,15 +170,14 @@ CY_ISR(isr_Timer_Handler){
             if (pwm > PWM_MAX){ 
                 pwm = PWM_MAX;
             }
+            
+            //if (vel_angle < 0.15 && fabs(angle)<2){ 
+            //    pwm = 0;
+            //}
+            
+            
             PWM_WriteCompare(pwm); // Outputs PWM saturated value
         #endif     
-                    
-        // Saturates the integral term for the next period //
-        if (ik > MAXINTEGRAL)
-            ik = MAXINTEGRAL;
-        else
-        if (ik < -MAXINTEGRAL) ik = -MAXINTEGRAL;
-    //Ex_time_Write(0);    
     }//if
     
 } // CY_ISR
@@ -270,10 +263,7 @@ int main(void){
         }
     }
     
-    
     /* Enable global interrupts. */
-    
-        
 } // main
 
 /* [] END OF FILE */
