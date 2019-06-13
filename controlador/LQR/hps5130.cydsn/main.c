@@ -71,6 +71,11 @@ float l_angle = 0; 	   	 // Last angle
 float l_vel_angle = 0;   // Last angle velocity
 float yk;
 
+float angles[8] = {0,0,0,0,0,0,0,0};
+
+int i;                  // Integer for for loops
+int mov_av_N = 4;       // Moving average number
+
 void Send(float Ang, int Pos) //uint16 Pwm, uint16 Pos,
 {                   
     char Msg[50] = {};
@@ -124,8 +129,7 @@ CY_ISR(isr_Timer_Handler){
         yk = -yk; 
         
         // Moving Average
-        int i;
-        int mov_av_N = 4;
+
         for (i=0; i<mov_av_N-1; i=i+1){
             angles[i] = angles[i+1];
         }
